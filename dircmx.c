@@ -1,6 +1,5 @@
 /* 	
-	Author: Rishabh Pahwa (110091353)
-	Email: pahwar@uwindsor.ca
+	Author: Rishabh Pahwa
 	Title: COMP8567: Advanced Systems Programming - Assignment 1
 	Submitted to: Dr. Prashanth Ranga
 */
