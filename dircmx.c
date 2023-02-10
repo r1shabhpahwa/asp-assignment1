@@ -1,8 +1,16 @@
+/* 	
+	Author: Rishabh Pahwa (110091353)
+	Email: pahwar@uwindsor.ca
+	Title: COMP8567: Advanced Systems Programming - Assignment 1
+	Submitted to: Dr. Prashanth Ranga
+*/
+
 #define _XOPEN_SOURCE 1
 #define _XOPEN_SOURCE_EXTENDED 1
 #define MAX_EXTENSIONS 6
 #define MAX_DEPTH 64
 #define MAX_PATH 512
+#define DEBUG 0 // will output log messages for each step when set 1
 
 #include <ftw.h>
 #include <stdio.h>
@@ -17,7 +25,7 @@ char res_src_dir[MAX_PATH],
    res_dest_dir[MAX_PATH],
    out_dir[2 * MAX_PATH],
    temp_path[MAX_PATH];
-int debug_mode = 0;
+int debug_mode = DEBUG;
 
 int mode = 0, num_exts = 0;
 char * extensions[MAX_EXTENSIONS];
@@ -62,8 +70,11 @@ int create_directory(const char * path) {
    for (p = tmp + 1;* p; p++)
       if ( * p == '/') {
          // replacing the '/' with null character *p = 0;
-
+		 * p = 0;
          // creating the directory with read, write, and execute permissions for the owner
+		 if (debug_mode) {
+            printf("Creating directory: %s\n", tmp);
+         }
          mkdir(tmp, S_IRWXU);
 
          // restoring the '/'
@@ -102,7 +113,7 @@ int copy_move_callback(const char * fpath,
          printf("Destination: %s\n", dest_path);
       }
 
-      create_directory(dest_path);
+      mkdir(dest_path, S_IRWXU);
    }
 
    // Copy/move file
@@ -167,12 +178,19 @@ char * resolve_relative(char * path) {
 
    } else
       strcpy(temp_path, tmp);
+   
+   // delete trailing "/" in output path
+   len = strlen(temp_path);
+   if (temp_path[len - 1] == '/')
+	   temp_path[len - 1] = '\0';
+   
    return temp_path;
 
 }
 
 int main(int argc, char * argv[]) {
    char * base;
+   int src_len;
 
    // Check for the correct number of arguments
    if (argc < 4) {
@@ -182,7 +200,23 @@ int main(int argc, char * argv[]) {
       printf("Maximum of %d extensions are allowed\n", MAX_EXTENSIONS);
       return 1;
    }
+	
+   // Check if the specified options is -cp or -mv
+   if (strcmp(argv[3], "-cp") == 0) {
+      mode = 0;
+   } else if (strcmp(argv[3], "-mv") == 0) {
+      mode = 1;
+   } else {
+      printf("Error: Invalid option, use -cp or -mv\n");
+      return 1;
+   }
 
+   // Check if the extension list is provided and add it to the extensions array
+   int i;
+   for (i = 4; i < argc; i++) {
+      extensions[num_exts++] = argv[i];
+   }
+   
    // Get home directory 
    home_dir = getenv("HOME");
 
@@ -193,6 +227,8 @@ int main(int argc, char * argv[]) {
    // resolve relative path for source and destination path
    sprintf(res_src_dir, "%s", resolve_relative(src_dir));
    sprintf(res_dest_dir, "%s", resolve_relative(dest_dir));
+   
+   src_len = strlen(res_src_dir);
 
    // Check if the source directory exists
    struct stat src_stat;
@@ -201,13 +237,16 @@ int main(int argc, char * argv[]) {
       return 1;
    }
 
-   // Check if source and destination are same 
-   // (will usually cause infinite loop but its limited by path character limit)
-   // (also makes no sense in case of -mv as directory will get deleted)
-   if (strcmp(res_src_dir, res_dest_dir) == 0) {
-      printf("Error: Source and destination directory cannot be same as it will lead to infinite loop. \n");
+   // Check if source and destination are same or if destination is inside source as it will cause infinite loop
+   // (also makes no sense in case of -mv as copied directory will get deleted)
+   
+   if (strncmp(res_src_dir, res_dest_dir, src_len - 1) == 0) {
+      printf("Error: Source and destination directory are either same path or destination is inside source directory. \n");
+	  printf("Not allowed as this will lead to an infinite loop. \n");
       return 1;
    }
+   
+   // check if destination
 
    // Calculate output path
    base = basename(res_src_dir);
@@ -215,7 +254,6 @@ int main(int argc, char * argv[]) {
 
    // Output Directories
    if (debug_mode) {
-      printf("\nIgnore output (for debugging purposes)\n");
       printf("Home directory is: %s\n", home_dir);
       printf("Input Source directory is: %s\n", src_dir);
       printf("Input Destination directory is: %s\n", dest_dir);
@@ -236,27 +274,12 @@ int main(int argc, char * argv[]) {
    // Create output directory if it does not already exist
    create_directory(res_dest_dir);
 
-   // Check if the specified options is -cp or -mv
-   if (strcmp(argv[3], "-cp") == 0) {
-      mode = 0;
-   } else if (strcmp(argv[3], "-mv") == 0) {
-      mode = 1;
-   } else {
-      printf("Error: Invalid option, use -cp or -mv\n");
-      return 1;
-   }
-
-   // Check if the extension list is provided and add it to the extensions array
-   int i;
-   for (i = 4; i < argc; i++) {
-      extensions[num_exts++] = argv[i];
-   }
-
+   
+   // Copy or move the directory using nftw
    if (debug_mode) {
       printf("Copy callback: \n");
    }
-
-   // Copy or move the directory using nftw
+   
    if (nftw(res_src_dir, copy_move_callback, MAX_DEPTH, FTW_PHYS) != 0) {
       perror("Error: nftw failed");
       return 1;
